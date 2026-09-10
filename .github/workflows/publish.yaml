@@ -244,7 +244,7 @@ jobs:
           "
 
       # No credential is passed. npm exchanges this job's OIDC identity for a short lived token
-      # against the trusted publisher configured on npmjs.org for Banou26/ponyfill + publish.yaml.
+      # against the trusted publisher configured on npmjs.org for banou26/ponyfill + publish.yaml.
       # BOTH HALVES ARE THE TRUST RELATIONSHIP: renaming this file breaks publishing, and so does
       # renaming the repository.
       #
