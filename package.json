@@ -25,6 +25,11 @@
       "types": "./build/file-system.d.ts",
       "import": "./build/file-system.js",
       "require": "./build/file-system.cjs"
+    },
+    "./webtransport": {
+      "types": "./build/webtransport.d.ts",
+      "import": "./build/webtransport.js",
+      "require": "./build/webtransport.cjs"
     }
   },
   "scripts": {
@@ -65,7 +70,8 @@
     "storage",
     "opfs",
     "quota",
-    "compatibility"
+    "compatibility",
+    "webtransport"
   ],
   "sideEffects": false
 }

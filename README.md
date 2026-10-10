@@ -139,6 +139,34 @@ user agent sniffing: it is the same operation an IndexedDB `put` performs. Found
 ripple, where posting the wrapper published a torrent that then never reached one per cent, with
 nothing reporting a fault.
 
+### `createWritable`
+
+`WebTransportDatagramDuplexStream.createWritable()`, taking the duplex as its first argument:
+
+```ts
+import { createWritable } from '@banou/ponyfill'
+
+const writer = createWritable(webtransport.datagrams).getWriter()
+```
+
+Measured 2026-10-10, headless, on the duplex prototype in a page and in both kinds of worker, then on a
+real `new WebTransport(url).datagrams`:
+
+| | Chromium 149, Chrome 153 | Firefox 151 | Firefox 157 | WebKit 26.0 (Playwright) |
+| --- | --- | --- | --- | --- |
+| `createWritable()` | absent | absent | present | present |
+| `writable` | present | present | present | **absent**, so `writable.getWriter()` throws |
+
+Firefox 157 was read in a page only. Safari was not run; MDN's compat data agrees with the WebKit
+column (`createWritable` from Safari 26.4, `writable` never). TypeScript's DOM types still declare only
+`writable`, which is how the old call compiles everywhere and throws on Safari. fkn.app's WebVPN client
+made that call, so every Safari dial failed its WebTransport setup and fell back to the WebSocket.
+
+The native method is used wherever it exists, and the duplex's `writable` otherwise. **The fallback
+refuses what it cannot do, at the call**, with `NotSupportedError`: a second writable from the same
+duplex, since there is only one stream and two callers would share it, and a `sendGroup` or non-zero
+`sendOrder`, since that stream has no priority of its own.
+
 ## Adding to it
 
 If you hit something that behaves differently between engines, or differently from its own

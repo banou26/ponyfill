@@ -36,6 +36,8 @@
 export { storage } from './storage'
 export { permissions } from './permissions'
 export { showDirectoryPicker, showOpenFilePicker, showSaveFilePicker } from './file-system'
+export { createWritable } from './webtransport'
 
 export type { StorageEstimate } from './storage'
 export type { PermissionStatus } from './permissions'
+export type { WebTransportSendOptions } from './webtransport'
