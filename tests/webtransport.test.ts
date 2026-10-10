@@ -69,6 +69,24 @@ describe('createWritable on the engine shapes measured', () => {
   })
 })
 
+/**
+ * The duplex as a DOM lib that follows the specification would declare it: `createWritable` a
+ * method, and its `sendGroup` a `WebTransportSendGroup`, which has a member `object` lacks. Checked
+ * by `vp lint` (type aware), not by vitest.
+ */
+type SpecSendGroup = { getStats(): Promise<unknown> }
+type SpecDuplex = {
+  readonly writable?: WritableStream
+  createWritable(options?: { sendGroup?: SpecSendGroup | null, sendOrder?: number }): WritableStream<Uint8Array>
+}
+
+describe('the types', () => {
+  it('a duplex typed like the spec IDL compiles as the argument, so a newer DOM lib cannot break callers', () => {
+    const spec: SpecDuplex = new SafariDuplex()
+    expect(createWritable(spec)).toBeInstanceOf(WritableStream)
+  })
+})
+
 describe('what the fallback cannot do is refused at the call', () => {
   it('a second writable from one duplex, which would share the only stream', () => {
     const chrome = new ChromeDuplex()

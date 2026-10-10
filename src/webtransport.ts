@@ -49,10 +49,15 @@
 /** The platform's `WebTransportSendOptions`. TypeScript's DOM types still lack `sendGroup`. */
 export type WebTransportSendOptions = { sendGroup?: object | null, sendOrder?: number }
 
-/** The two members read, both optional because no engine is certain to have either. */
+/**
+ * The two members read, both optional because no engine is certain to have either. `createWritable`
+ * is a method signature on purpose: a property of function type has its parameter checked
+ * contravariantly, so a DOM lib declaring the spec's `WebTransportSendGroup` would fail every call
+ * with TS2345.
+ */
 type DatagramDuplex = {
   readonly writable?: WritableStream<Uint8Array>
-  createWritable?: (options?: WebTransportSendOptions) => WritableStream<Uint8Array>
+  createWritable?(options?: WebTransportSendOptions): WritableStream<Uint8Array>
 }
 
 const handedOut = new WeakSet<object>()
