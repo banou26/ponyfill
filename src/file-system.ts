@@ -69,8 +69,7 @@
  *    memory are not platform names, and choosing between them is a product decision about what a page
  *    does when it cannot save.
  *  - `queryPermission` and `requestPermission` on a handle. They are Chromium's alone, absent from
- *    Firefox even on its own native handles, and they are methods on an object the caller already
- *    holds rather than a name this package could export without inventing one.
+ *    Firefox even on its own native handles.
  *  - re-opening. Nothing here makes a snapshot durable. An app that needs the bytes after a reload
  *    has to copy them somewhere it owns, which spends the origin's quota and is therefore its
  *    decision to make rather than this package's to make silently.

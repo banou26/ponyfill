@@ -12,7 +12,10 @@ const { usage, quota } = await storage.estimate()
 
 **It is a ponyfill, never a polyfill.** Nothing here writes to a global. You import the wrapped API
 and call the same method names the platform uses, so a call site reads the same as the native one and
-`grep` can still find every place that needed the workaround.
+`grep` can still find every place that needed the workaround. A method of an object you already hold
+is a function of the same name that takes that object first, exported from its module's own entry
+rather than the root, since the root holds the platform's global names: `createWritable(datagrams)`
+from `@banou/ponyfill/webtransport`.
 
 Patching `navigator.storage` would change what every other script on the page sees, including code
 that was correct against the real behaviour, and it would hide the difference at exactly the call
@@ -141,10 +144,12 @@ nothing reporting a fault.
 
 ### `createWritable`
 
-`WebTransportDatagramDuplexStream.createWritable()`, taking the duplex as its first argument:
+`WebTransportDatagramDuplexStream.createWritable()`, taking the duplex as its first argument, from
+`@banou/ponyfill/webtransport` only. Not from the root: `FileSystemFileHandle.createWritable` has the
+same name.
 
 ```ts
-import { createWritable } from '@banou/ponyfill'
+import { createWritable } from '@banou/ponyfill/webtransport'
 
 const writer = createWritable(webtransport.datagrams).getWriter()
 ```

@@ -13,6 +13,14 @@
  * anything: it is a utility library wearing the word. So the surface here is exactly the platform's
  * surface, and a helper only becomes public if the platform has one by that name.
  *
+ * A METHOD of an object the caller already holds is exported under its own name, as a function that
+ * takes that object first, and only from its module's entry: the root carries the names the platform
+ * has globally, and a method name there would claim one it does not (`createWritable` is also
+ * `FileSystemFileHandle`'s). So `datagrams.createWritable()` becomes
+ *
+ *     import { createWritable } from '@banou/ponyfill/webtransport'
+ *     const writer = createWritable(webtransport.datagrams).getWriter()
+ *
  * WHERE ENGINES DIVERGE, ONE BEHAVIOUR IS PICKED and made consistent, so application code never
  * branches. That is the point of the package rather than a liberty it takes. Each pick is argued
  * where it lives, and each says what it gives up.
@@ -36,8 +44,6 @@
 export { storage } from './storage'
 export { permissions } from './permissions'
 export { showDirectoryPicker, showOpenFilePicker, showSaveFilePicker } from './file-system'
-export { createWritable } from './webtransport'
 
 export type { StorageEstimate } from './storage'
 export type { PermissionStatus } from './permissions'
-export type { WebTransportSendOptions } from './webtransport'

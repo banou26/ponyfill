@@ -1,7 +1,7 @@
 /**
  * `WebTransportDatagramDuplexStream.createWritable()`, as a function of the duplex, on every engine.
  *
- *     import { createWritable } from '@banou/ponyfill'
+ *     import { createWritable } from '@banou/ponyfill/webtransport'
  *     const writer = createWritable(webtransport.datagrams).getWriter()
  *
  * ## What was measured, on what, and when
