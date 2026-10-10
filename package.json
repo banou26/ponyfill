@@ -30,6 +30,11 @@
       "types": "./build/webtransport.d.ts",
       "import": "./build/webtransport.js",
       "require": "./build/webtransport.cjs"
+    },
+    "./web-audio": {
+      "types": "./build/web-audio.d.ts",
+      "import": "./build/web-audio.js",
+      "require": "./build/web-audio.cjs"
     }
   },
   "scripts": {

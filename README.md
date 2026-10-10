@@ -186,6 +186,36 @@ Two differences the fallback cannot refuse at the call: on a closed or failed tr
 the transport's state, and the stream it returns has no `sendGroup` or `sendOrder` attribute to set
 later (the return type does not declare one either).
 
+### `createMediaElementSource`
+
+`AudioContext.createMediaElementSource()`, taking the context as its first argument, from
+`@banou/ponyfill/web-audio` only, refused where a routed element stops sounding the way it does
+unrouted.
+
+```ts
+import { createMediaElementSource } from '@banou/ponyfill/web-audio'
+
+const source = createMediaElementSource(context, video)
+```
+
+Measured 2026-10-11, a `<video>` playing a tone through MSE into an `AnalyserNode`, headless and
+muted:
+
+| | Chromium 153 | Firefox 151 | WebKit 26.5 (GTK) |
+| --- | --- | --- | --- |
+| the element's audio reaches the graph | yes | yes | yes |
+| its `volume` at 0.5, 0.25 and 0.1 | -6, -12 and -20 dB | the same | ignored |
+| its `muted` | silence | silence | ignored |
+
+Safari was not measured. Its MSE player has no audio source provider in WebKit's source, so the graph
+would get silence.
+
+**WebKit is refused with a `NotSupportedError`, before the element is touched**, because routing
+cannot be undone: Chromium and WebKit refuse a second source for one element, and Chromium stops a
+playing element whose context is closed. It is told apart by `navigator.vendor`, which every WebKit
+port answers as `Apple Computer, Inc.`; no probe can stand in for it, since the only way to learn how
+a routed element behaves is to route it.
+
 ## Adding to it
 
 If you hit something that behaves differently between engines, or differently from its own
