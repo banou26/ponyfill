@@ -162,8 +162,12 @@ real `new WebTransport(url).datagrams`:
 | `createWritable()` | absent | absent | present | present |
 | `writable` | present | present | present | **absent**, so `writable.getWriter()` throws |
 
-Firefox 157 was read in a page only. Safari was not run; MDN's compat data agrees with the WebKit
-column (`createWritable` from Safari 26.4, `writable` never). TypeScript's DOM types still declare only
+The same day, a real webvpn relay counted what each engine sent through both calls, in a page and in
+both workers: 3 of 3 every time on Chromium 149, Chrome 153, Firefox 151 and Firefox 157. Playwright's
+WebKit never opened a QUIC session to it on either call, so on WebKit the shape is measured and the
+traffic is not, and Safari itself was not run. MDN's compat data (mdn/browser-compat-data `87af662`,
+2026-08-26) agrees with the table: `createWritable` from Firefox 155 and Safari 26.4, `writable` never
+in Safari. TypeScript's DOM types still declare only
 `writable`, which is how the old call compiles everywhere and throws on Safari. fkn.app's WebVPN client
 made that call, so every Safari dial failed its WebTransport setup and fell back to the WebSocket.
 
@@ -171,6 +175,15 @@ The native method is used wherever it exists, and the duplex's `writable` otherw
 refuses what it cannot do, at the call**, with `NotSupportedError`: a second writable from the same
 duplex, since there is only one stream and two callers would share it, and a `sendGroup` or non-zero
 `sendOrder`, since that stream has no priority of its own.
+
+**Firefox 155 and later take the native method**, since they have both: a stream of their own rather
+than the shared `writable`. On Firefox 157 a 2000 datagram burst from a shared worker reached the relay
+1995 times that way, against 1970 through `writable`.
+
+Two differences the fallback cannot refuse at the call: on a closed or failed transport it returns the
+`writable` as it is where the native method throws `InvalidStateError`, since the duplex cannot see
+the transport's state, and the stream it returns has no `sendGroup` or `sendOrder` attribute to set
+later (the return type does not declare one either).
 
 ## Adding to it
 

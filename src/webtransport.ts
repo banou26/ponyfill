@@ -14,8 +14,12 @@
  * | `createWritable()` | absent | absent | present | present |
  * | `writable` | present | present | present | ABSENT, so `writable.getWriter()` throws `TypeError` |
  *
- * Firefox 157 was read in a page only. Safari was not run; MDN's compat data (`e0aae4c`) agrees with
- * the WebKit column, with `createWritable` from Safari 26.4 and `writable` never shipped.
+ * The same day, a real webvpn relay counted the datagrams each engine sent through both calls, in a
+ * page and in both workers: 3 of 3 every time on Chromium 149, Chrome 153, Firefox 151 and Firefox
+ * 157. Playwright's WebKit never opened a QUIC session to it on either call, so on WebKit the shape
+ * is measured and the traffic is not, and Safari itself was not run. MDN's compat data
+ * (mdn/browser-compat-data `87af662`, 2026-08-26) agrees with the table: `createWritable` from
+ * Firefox 155 and Safari 26.4, `writable` never in Safari.
  *
  * ## The divergence
  *
@@ -31,6 +35,15 @@
  * rather than misbehave later: a second writable from the same duplex (there is only one stream, so
  * two callers would share it and closing either would close both), and a `sendGroup` or non-zero
  * `sendOrder` (that stream has no priority of its own).
+ *
+ * Firefox 155 and later have both members, so they take the native method and get a stream of their
+ * own rather than the shared `writable`. On Firefox 157 a 2000 datagram burst from a shared worker
+ * reached the relay 1995 times that way, against 1970 through `writable`.
+ *
+ * Two differences the fallback cannot refuse at the call. On a transport that is already closed or
+ * failed it returns the `writable` as it is, where the native method throws `InvalidStateError`: the
+ * duplex alone cannot see the transport's state. And the stream it returns has no `sendGroup` or
+ * `sendOrder` attribute to set later, which the return type does not declare either.
  */
 
 /** The platform's `WebTransportSendOptions`. TypeScript's DOM types still lack `sendGroup`. */
