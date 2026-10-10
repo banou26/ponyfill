@@ -155,11 +155,24 @@ jobs:
           if ! tar tzf "$TGZ" | grep -q '^package/build/'; then
             echo "::error::the tarball contains no build output at all"; exit 1
           fi
-          for want in build/index.js build/index.cjs build/index.d.ts build/storage.js build/storage.cjs build/storage.d.ts; do
+          # Every file the PACKED manifest points at, so a new entry needs no edit here. A module that
+          # drops out of vite.config's lib entries is inlined into index.js and ships only its .d.ts:
+          # the root import still works while its own subpath throws ERR_MODULE_NOT_FOUND.
+          WANTED=$(printf '%s' "$MANIFEST" | node -e "
+            const m = JSON.parse(require('fs').readFileSync(0, 'utf8'))
+            const paths = (v) => typeof v === 'string' ? [v] : Object.values(v ?? {}).flatMap(paths)
+            const all = [m.main, m.module, m.types, ...paths(m.exports)].filter(Boolean)
+            console.log([...new Set(all.map((p) => p.replace(/^\.\//, '')))].join('\n'))
+          ")
+          if [ -z "$WANTED" ]; then
+            echo "::error::the packed manifest points at no files, so there is nothing to check"; exit 1
+          fi
+          for want in $WANTED; do
             if ! tar tzf "$TGZ" | grep -q "^package/$want$"; then
-              echo "::error::the tarball is missing $want, which the exports map points at"; exit 1
+              echo "::error::the tarball is missing $want, which the packed manifest points at"; exit 1
             fi
           done
+          echo "the tarball carries all $(printf '%s\n' "$WANTED" | wc -l) files the manifest points at"
 
           # `files` decides the whole payload, and its absence silently falls back to .gitignore,
           # which would ship src/ and every build config. That shipped once in fkn-client.
