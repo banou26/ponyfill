@@ -177,8 +177,9 @@ duplex, since there is only one stream and two callers would share it, and a `se
 `sendOrder`, since that stream has no priority of its own.
 
 **Firefox 155 and later take the native method**, since they have both: a stream of their own rather
-than the shared `writable`. On Firefox 157 a 2000 datagram burst from a shared worker reached the relay
-1995 times that way, against 1970 through `writable`.
+than the shared `writable`. On Firefox 157 a 2000 datagram burst from a shared worker showed no loss
+against `writable` in one run (1995 against 1970; Firefox 151 gave 1972 and 2000 on the same `writable`
+path).
 
 Two differences the fallback cannot refuse at the call: on a closed or failed transport it returns the
 `writable` as it is where the native method throws `InvalidStateError`, since the duplex cannot see
