@@ -112,11 +112,15 @@ jobs:
       # This repo has no separate gate, unlike fkn-client where main can only be reached through
       # verify-and-promote. So the tests run HERE, before anything is uploaded, because an npm version
       # cannot be republished once it is wrong.
-      - name: Test and typecheck
+      #
+      # `vp lint` is the only check that typechecks tests/: vitest strips types, and `typecheck` reads
+      # tsconfig.json, which includes src/ alone. Without it a broken type test passes all the rest.
+      - name: Test, typecheck and lint
         if: steps.decide.outputs.changed == 'true'
         run: |
           npm test
           npm run typecheck
+          npx vp lint
 
       # `prepack` builds, so the tarball can never be made from a stale or absent build/ directory.
       # build/ is gitignored, so on a fresh checkout there is none at all and a pack without that hook
