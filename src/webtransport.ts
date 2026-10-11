@@ -77,3 +77,48 @@ export const createWritable = (datagrams: DatagramDuplex, options?: WebTransport
   handedOut.add(datagrams)
   return writable
 }
+
+/**
+ * The two names of one setting, each optional since an engine may have either. TypeScript 7.0.2's
+ * DOM types declare only `outgoingHighWaterMark`.
+ */
+type BufferedDuplex = { outgoingMaxBufferedDatagrams?: number, outgoingHighWaterMark?: number }
+
+/**
+ * Same as `datagrams.outgoingMaxBufferedDatagrams = value`, on every engine.
+ *
+ *     setOutgoingMaxBufferedDatagrams(webtransport.datagrams, 256)
+ *
+ * The spec renamed `outgoingHighWaterMark` to `outgoingMaxBufferedDatagrams` (w3c/webtransport
+ * `5e10b91e`, 2026-02-25): how many datagrams may wait in the sink before a write stops resolving at
+ * once. Measured 2026-10-11, one machine, headless, in a page and a shared worker: 2,000 datagrams
+ * of 1,009 bytes from a `createWritable` writer, each write awaited, counted at a local webvpn relay.
+ * "Busy" adds a chain of 1 ms tasks on the same event loop.
+ *
+ * | | Chromium 149 | Chrome 153 | Firefox 151, 157 | WebKit (Playwright build 2311) |
+ * | --- | --- | --- | --- | --- |
+ * | `outgoingHighWaterMark` | 1 | 1, one field with the new name | 5 | 1 |
+ * | `outgoingMaxBufferedDatagrams` | absent | 1 | absent | absent |
+ * | busy, 2,000 writes at the default / at 256 | 2.0 s / 32 to 39 ms | 2.0 s / 36 to 40 ms | 2.0 s at both | first write pending after 2 s at both |
+ *
+ * Chrome 153 files a deprecation report (`WebTransportDatagramDuplexStreamOutgoingHighWaterMark`)
+ * for the old name and none for the new. Firefox never passes the value to its sink, and Safari
+ * 26.4's network process ignores it (`FIXME: Use this value.`). WebKit main renamed it (`2db431710a`,
+ * 2026-07-20) and acts on the new name only (`fc590f3281`, 2026-07-28), read in source and not run;
+ * mdn/browser-compat-data has the new name from Chrome 151 and Safari Technology Preview, which
+ * removed the old one.
+ *
+ * So the new name wherever the duplex has it, and the old one otherwise, never both: on Chrome 153
+ * they are one field and the old one files the report. The check is `in`, which calls no getter. A
+ * duplex with neither is refused with `NotSupportedError`, since the write would only add a plain
+ * property and change nothing.
+ *
+ * Through this function, the same day: the busy run took 34 to 41 ms on Chromium 149 and Chrome 153,
+ * with 2,000 of 2,000 arrived, Firefox 151 and 157 were unchanged, and Chrome 153 filed no report
+ * where a direct write of the old name did.
+ */
+export const setOutgoingMaxBufferedDatagrams = (datagrams: BufferedDuplex, value: number): void => {
+  if ('outgoingMaxBufferedDatagrams' in datagrams) datagrams.outgoingMaxBufferedDatagrams = value
+  else if ('outgoingHighWaterMark' in datagrams) datagrams.outgoingHighWaterMark = value
+  else throw refuse('this browser has no limit to set on its outgoing datagram queue')
+}

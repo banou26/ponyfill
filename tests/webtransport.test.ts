@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test'
 
-import { createWritable, type WebTransportSendOptions } from '../src/webtransport'
+import { createWritable, setOutgoingMaxBufferedDatagrams, type WebTransportSendOptions } from '../src/webtransport'
 
 /**
  * Fakes in the shapes measured on 2026-10-10 (see the module). Methods and getters sit on a class
@@ -111,5 +111,65 @@ describe('what the fallback cannot do is refused at the call', () => {
 
   it('a duplex with neither member', () => {
     expect((refusal(() => createWritable({})) as DOMException).name).toBe('NotSupportedError')
+  })
+})
+
+type BufferName = 'outgoingMaxBufferedDatagrams' | 'outgoingHighWaterMark'
+
+/**
+ * A duplex with the names measured on 2026-10-11 (see the module), as accessors on its prototype over
+ * one field, the way Chrome 153 has both, recording every read and write.
+ */
+const bufferedDuplex = (...names: BufferName[]) => {
+  const uses: string[] = []
+  let value = 1
+  const prototype = {}
+  for (const name of names) {
+    Object.defineProperty(prototype, name, {
+      get: () => { uses.push(`get ${name}`); return value },
+      set: (next: number) => { uses.push(`set ${name}`); value = next },
+    })
+  }
+  return { datagrams: Object.create(prototype) as Partial<Record<BufferName, number>>, uses, value: () => value }
+}
+
+describe('setOutgoingMaxBufferedDatagrams on the engine shapes measured', () => {
+  it('the line it replaces changes nothing on the new name\'s shape, so the fake reproduces the gap', () => {
+    const webkitMain = bufferedDuplex('outgoingMaxBufferedDatagrams')
+    webkitMain.datagrams.outgoingHighWaterMark = 256
+    expect(webkitMain.value()).toBe(1)
+  })
+
+  it('Safari Technology Preview, new name only: sets it', () => {
+    const webkitMain = bufferedDuplex('outgoingMaxBufferedDatagrams')
+    setOutgoingMaxBufferedDatagrams(webkitMain.datagrams, 256)
+    expect(webkitMain.value()).toBe(256)
+    expect(webkitMain.uses).toEqual(['set outgoingMaxBufferedDatagrams'])
+  })
+
+  it('Chromium 150 and older, Firefox, Safari 26.4, old name only: sets the old name', () => {
+    const chromium = bufferedDuplex('outgoingHighWaterMark')
+    setOutgoingMaxBufferedDatagrams(chromium.datagrams, 256)
+    expect(chromium.value()).toBe(256)
+    expect(chromium.uses).toEqual(['set outgoingHighWaterMark'])
+    expect(Object.keys(chromium.datagrams)).toEqual([])
+  })
+
+  it('Chrome 151 and later, both names: the new one only, the old one never read or written', () => {
+    const chrome = bufferedDuplex('outgoingMaxBufferedDatagrams', 'outgoingHighWaterMark')
+    setOutgoingMaxBufferedDatagrams(chrome.datagrams, 256)
+    expect(chrome.value()).toBe(256)
+    expect(chrome.uses).toEqual(['set outgoingMaxBufferedDatagrams'])
+  })
+
+  it('a duplex with neither name is refused, and left as it was', () => {
+    const neither = bufferedDuplex()
+    expect((refusal(() => setOutgoingMaxBufferedDatagrams(neither.datagrams, 256)) as DOMException).name).toBe('NotSupportedError')
+    expect(Object.keys(neither.datagrams)).toEqual([])
+  })
+
+  it('the types: the DOM lib\'s duplex, which has only the old name, and the spec\'s, which has only the new', () => {
+    setOutgoingMaxBufferedDatagrams(bufferedDuplex('outgoingHighWaterMark').datagrams as WebTransportDatagramDuplexStream, 256)
+    setOutgoingMaxBufferedDatagrams(bufferedDuplex('outgoingMaxBufferedDatagrams').datagrams as { outgoingMaxBufferedDatagrams: number }, 256)
   })
 })

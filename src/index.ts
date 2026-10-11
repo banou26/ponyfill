@@ -21,6 +21,12 @@
  *     import { createWritable } from '@banou/ponyfill/webtransport'
  *     const writer = createWritable(webtransport.datagrams).getWriter()
  *
+ * An ATTRIBUTE the engines name differently is set through `set` and the platform's name, object
+ * first, from the same entry, so `grep -i` for the attribute still finds every call site.
+ * `datagrams.outgoingMaxBufferedDatagrams = 256` becomes
+ *
+ *     setOutgoingMaxBufferedDatagrams(webtransport.datagrams, 256)
+ *
  * WHERE ENGINES DIVERGE, ONE BEHAVIOUR IS PICKED and made consistent, so application code never
  * branches. That is the point of the package rather than a liberty it takes. Each pick is argued
  * where it lives, and each says what it gives up.

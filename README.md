@@ -15,7 +15,9 @@ and call the same method names the platform uses, so a call site reads the same 
 `grep` can still find every place that needed the workaround. A method of an object you already hold
 is a function of the same name that takes that object first, exported from its module's own entry
 rather than the root, since the root holds the platform's global names: `createWritable(datagrams)`
-from `@banou/ponyfill/webtransport`.
+from `@banou/ponyfill/webtransport`. An attribute the engines name differently is set through `set`
+and the platform's name, object first: `setOutgoingMaxBufferedDatagrams(datagrams, 256)` for
+`datagrams.outgoingMaxBufferedDatagrams = 256`, so a case-insensitive `grep` for the attribute finds it.
 
 Patching `navigator.storage` would change what every other script on the page sees, including code
 that was correct against the real behaviour, and it would hide the difference at exactly the call
@@ -185,6 +187,38 @@ Two differences the fallback cannot refuse at the call: on a closed or failed tr
 `writable` as it is where the native method throws `InvalidStateError`, since the duplex cannot see
 the transport's state, and the stream it returns has no `sendGroup` or `sendOrder` attribute to set
 later (the return type does not declare one either).
+
+### `setOutgoingMaxBufferedDatagrams`
+
+`datagrams.outgoingMaxBufferedDatagrams = value`, under whichever name the engine has, from
+`@banou/ponyfill/webtransport`. The spec renamed `outgoingHighWaterMark` to it (w3c/webtransport
+`5e10b91e`, 2026-02-25): how many datagrams may wait in the sink before a write stops resolving at once.
+
+```ts
+import { setOutgoingMaxBufferedDatagrams } from '@banou/ponyfill/webtransport'
+
+setOutgoingMaxBufferedDatagrams(webtransport.datagrams, 256)
+```
+
+Measured 2026-10-11, headless, in a page and a shared worker: 2,000 datagrams of 1,009 bytes from a
+`createWritable` writer, each write awaited, counted at a local webvpn relay. "Busy" adds a chain of
+1 ms tasks on the same event loop.
+
+| | Chromium 149 | Chrome 153 | Firefox 151, 157 | WebKit (Playwright build 2311) |
+| --- | --- | --- | --- | --- |
+| `outgoingHighWaterMark` | 1 | 1, one field with the new name | 5 | 1 |
+| `outgoingMaxBufferedDatagrams` | absent | 1 | absent | absent |
+| busy, 2,000 writes at the default / at 256 | 2.0 s / 32 to 39 ms | 2.0 s / 36 to 40 ms | 2.0 s at both | first write pending after 2 s at both |
+
+Chrome 153 files a deprecation report for the old name and none for the new. Firefox never passes the
+value to its sink, and Safari 26.4's network process ignores it. WebKit main renamed it (`2db431710a`)
+and acts on the new name only (`fc590f3281`), read in source and not run; MDN's compat data has the new
+name from Chrome 151 and Safari Technology Preview, which removed the old one.
+
+**The new name wherever the duplex has it, the old one otherwise, never both**: on Chrome 153 they are
+one field and the old one files the report. A duplex with neither is refused with `NotSupportedError`,
+since the write would only add a plain property. Through this function the busy run took 34 to 41 ms on
+Chromium 149 and Chrome 153, 2,000 of 2,000 arrived, and Chrome 153 filed no report.
 
 ### `createMediaElementSource`
 
