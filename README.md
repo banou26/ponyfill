@@ -144,6 +144,36 @@ user agent sniffing: it is the same operation an IndexedDB `put` performs. Found
 ripple, where posting the wrapper published a torrent that then never reached one per cent, with
 nothing reporting a fault.
 
+### `write`
+
+`FileSystemSyncAccessHandle.write()`, taking the handle as its first argument, from
+`@banou/ponyfill/file-system` only, throwing `QuotaExceededError` on every engine when the quota
+refuses the write.
+
+```ts
+import { write } from '@banou/ponyfill/file-system'
+
+write(handle, bytes, { at: offset })
+```
+
+Measured 2026-10-19, headless, a dedicated worker writing into OPFS: on Firefox inside a frame held to
+its fixed 10 GiB group limit, on Chrome in a profile held to a 1 GiB tmpfs.
+
+| | Firefox 151, Firefox 157 | Chrome 155 |
+| --- | --- | --- |
+| a write with no room left for any of it | returns 0, throws nothing | throws a `QuotaExceededError` instance, writes nothing |
+| 200 MiB into about 75 MiB of room | returns 78,643,200, throws nothing | not measured |
+
+The specification (whatwg/fs `7df1158`, 2026-10-08) throws `QuotaExceededError` before writing
+anything when the write would exceed the quota, and returns a short count only for a write that failed
+part way for some other reason. So code that checks only for the throw reads Firefox's refusal as
+success. Found in ripple, whose engine took a refused write for a retryable one and retried it for
+three seconds before stopping the torrent anyway.
+
+**A short count throws `QuotaExceededError`**, built from the platform's `QuotaExceededError` class where
+there is one, as Chrome's is. Bytes a partial write put down stay written and charged, and the
+specification's other short count is reported the same way, since either way the write did not land.
+
 ### `createWritable`
 
 `WebTransportDatagramDuplexStream.createWritable()`, taking the duplex as its first argument, from

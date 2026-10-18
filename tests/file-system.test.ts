@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { showDirectoryPicker, showOpenFilePicker, showSaveFilePicker } from '../src/file-system'
+import { showDirectoryPicker, showOpenFilePicker, showSaveFilePicker, write } from '../src/file-system'
 
 /**
  * The pickers, driven without a browser.
@@ -340,5 +340,50 @@ describe('what a wrapped handle refuses, which is everything that writes', () =>
       expect(() => structuredClone(handle), 'a silent clone is a dead handle later').toThrow()
       try { structuredClone(handle) } catch (error) { expect((error as Error).name).toBe('DataCloneError') }
     }
+  })
+})
+
+describe('write', () => {
+  // a sync access handle whose write lands `room` bytes at most, the way Firefox meets its quota
+  const handle = (room: number) => {
+    const calls: { length: number, at?: number }[] = []
+    return {
+      calls,
+      write: (buffer: AllowSharedBufferSource, options?: { at?: number }) => {
+        calls.push({ length: buffer.byteLength, at: options?.at })
+        return Math.min(room, buffer.byteLength)
+      },
+    }
+  }
+
+  it('hands back the count when the whole buffer landed', () => {
+    const h = handle(Infinity)
+    expect(write(h, new Uint8Array(8), { at: 16 })).toBe(8)
+    expect(h.calls).toEqual([{ length: 8, at: 16 }])
+  })
+
+  it('throws QuotaExceededError where Firefox returns 0 and throws nothing', () => {
+    expect(() => write(handle(0), new Uint8Array(8 * 1024 * 1024), { at: 10_624_058_159 - 8 * 1024 * 1024 }))
+      .toThrow(expect.objectContaining({ name: 'QuotaExceededError' }))
+  })
+
+  it('throws the same for a write that only partly fit', () => {
+    // Firefox 157: 200 MiB into about 75 MiB of room returned 78,643,200
+    expect(() => write(handle(78_643_200), new Uint8Array(200 * 1024 * 1024)))
+      .toThrow(expect.objectContaining({ name: 'QuotaExceededError' }))
+  })
+
+  it('builds the refusal from the QuotaExceededError class where the platform has one', () => {
+    class QuotaExceededError extends DOMException {
+      constructor (message: string) { super(message, 'QuotaExceededError') }
+    }
+    vi.stubGlobal('QuotaExceededError', QuotaExceededError)
+    expect(() => write(handle(0), new Uint8Array(8))).toThrow(QuotaExceededError)
+  })
+
+  it('lets a QuotaExceededError the engine throws through untouched', () => {
+    const refused = new DOMException('over quota', 'QuotaExceededError')
+    const h = { write: () => { throw refused } }
+    expect(() => write(h, new Uint8Array(1))).toThrow(refused)
   })
 })

@@ -393,3 +393,50 @@ export const showDirectoryPicker: DirectoryPicker = async (options = {}) => {
   })
   return handleFor(treeFrom(files)) as FileSystemDirectoryHandle
 }
+
+/**
+ * The one member read. TypeScript's DOM lib declares `FileSystemSyncAccessHandle` for workers only,
+ * and a method signature keeps a caller's own narrower declaration of it assignable.
+ */
+type SyncAccessHandle = { write(buffer: AllowSharedBufferSource, options?: { at?: number }): number }
+
+/**
+ * Same as `handle.write(buffer, options)` on a `FileSystemSyncAccessHandle`, with the handle as the
+ * first argument, throwing `QuotaExceededError` on every engine when the quota refuses the write.
+ * From `@banou/ponyfill/file-system` only.
+ *
+ *     import { write } from '@banou/ponyfill/file-system'
+ *     write(handle, bytes, { at: offset })
+ *
+ * ## What was measured, on what, and when
+ *
+ * 2026-10-19, one machine, headless, a dedicated worker writing into OPFS: on Firefox inside a frame
+ * held to its fixed 10 GiB group limit, on Chrome in a profile held to a 1 GiB tmpfs.
+ *
+ * | | Firefox 151, Firefox 157 | Chrome 155 |
+ * | --- | --- | --- |
+ * | a write with no room left for any of it | returns 0, throws nothing | throws `QuotaExceededError`, an instance of the platform's `QuotaExceededError`, and writes nothing |
+ * | 200 MiB into about 75 MiB of room | returns 78,643,200, throws nothing | not measured |
+ *
+ * The specification (whatwg/fs `7df1158`, 2026-10-08) throws `QuotaExceededError` before writing
+ * anything when the write would exceed the quota, and returns a short count only for a write that
+ * failed part way for some other reason. So a caller that checks only for the throw, as code tested
+ * on Chromium does, reads Firefox's refusal as success.
+ *
+ * ## The pick
+ *
+ * A short count throws `QuotaExceededError`, built from the platform's own `QuotaExceededError`
+ * class where there is one, as Chrome's is. What it gives up: bytes a partial write put down stay
+ * written and charged, and the specification's other short count is reported the same way, since
+ * either way the write did not land.
+ */
+export const write = (handle: SyncAccessHandle, buffer: AllowSharedBufferSource, options?: { at?: number }): number => {
+  const written = handle.write(buffer, options)
+  if (written < buffer.byteLength) {
+    const message = `the storage quota took ${written} of ${buffer.byteLength} bytes`
+    // TypeScript's DOM lib does not declare the class yet
+    const Refusal = (globalThis as { QuotaExceededError?: new (message: string) => DOMException }).QuotaExceededError
+    throw Refusal ? new Refusal(message) : new DOMException(message, 'QuotaExceededError')
+  }
+  return written
+}
