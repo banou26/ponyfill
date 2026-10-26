@@ -35,6 +35,11 @@
       "types": "./build/web-audio.d.ts",
       "import": "./build/web-audio.js",
       "require": "./build/web-audio.cjs"
+    },
+    "./web-messaging": {
+      "types": "./build/web-messaging.d.ts",
+      "import": "./build/web-messaging.js",
+      "require": "./build/web-messaging.cjs"
     }
   },
   "scripts": {
@@ -48,6 +53,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^25.9.5",
+    "playwright-core": "1.62.1",
     "typescript": "^7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.3.3",
     "vite-plus": "0.3.3",
@@ -76,7 +82,8 @@
     "opfs",
     "quota",
     "compatibility",
-    "webtransport"
+    "webtransport",
+    "postmessage"
   ],
   "sideEffects": false
 }
