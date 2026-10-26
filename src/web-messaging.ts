@@ -38,7 +38,8 @@ export const postMessage = (target: Window, ...args: PostMessageArguments): void
   target.postMessage(...(args as [unknown, string]))
 }
 
-// `Window.postMessage()`'s two overloads
+// `Window.postMessage()`'s two overloads. An optional tuple element refuses an explicit `undefined` under
+// `exactOptionalPropertyTypes` where the platform's optional parameter takes one, hence the `| undefined`
 type PostMessageArguments =
-  | [message: unknown, targetOrigin: string, transfer?: Transferable[]]
-  | [message: unknown, options?: WindowPostMessageOptions]
+  | [message: unknown, targetOrigin: string, transfer?: Transferable[] | undefined]
+  | [message: unknown, options?: WindowPostMessageOptions | undefined]

@@ -1,6 +1,6 @@
 import type { Browser, Frame } from 'playwright-core'
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium, firefox, webkit } from 'playwright-core'
@@ -34,6 +34,19 @@ describe('postMessage', () => {
   // node runs no tail calls, so this is where one shows here: a call whose value is returned is in tail position
   it('returns nothing, even where the platform returns something', () => {
     expect(postMessage(fakeWindow().target, 'a', '*')).toBeUndefined()
+  })
+
+  it('compiles exactly the calls the platform does, with exactOptionalPropertyTypes off and on', () => {
+    const root = join(import.meta.dirname, '..')
+    for (const exact of ['false', 'true']) {
+      const tsc = spawnSync(join(root, 'node_modules', '.bin', 'tsc'), [
+        '--ignoreConfig', '--noEmit', '--strict', '--skipLibCheck', '--target', 'esnext', '--module', 'esnext',
+        '--moduleResolution', 'bundler', '--lib', 'esnext,dom', '--exactOptionalPropertyTypes', exact,
+        join(root, 'tests', 'web-messaging.types.ts'),
+      ], { encoding: 'utf8' })
+      expect(tsc.stdout + tsc.stderr, `exactOptionalPropertyTypes ${exact}`).toBe('')
+      expect(tsc.status).toBe(0)
+    }
   })
 })
 
