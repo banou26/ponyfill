@@ -40,6 +40,11 @@
       "types": "./build/web-messaging.d.ts",
       "import": "./build/web-messaging.js",
       "require": "./build/web-messaging.cjs"
+    },
+    "./webrtc": {
+      "types": "./build/webrtc.d.ts",
+      "import": "./build/webrtc.js",
+      "require": "./build/webrtc.cjs"
     }
   },
   "scripts": {
@@ -83,7 +88,8 @@
     "quota",
     "compatibility",
     "webtransport",
-    "postmessage"
+    "postmessage",
+    "webrtc"
   ],
   "sideEffects": false
 }

@@ -320,6 +320,60 @@ never heard.
 reads it, however the caller reaches the function, tail call included. Nothing is detected and every
 engine runs the same line.
 
+### `RTCPeerConnection`
+
+The platform's class under its own name, from the root or from `@banou/ponyfill/webrtc`: a subclass whose
+constructor is not refused for connections the page has already closed and dropped.
+
+```ts
+import { RTCPeerConnection } from '@banou/ponyfill'
+
+const connection = new RTCPeerConnection({ iceServers })
+```
+
+Measured 2026-11-13 on one Linux machine, headless, a fresh profile per run: Chrome 156.0.8078.47 (the same on
+Chromium 156.0.8078.4), Firefox 157.0, and WebKit 26.5 in Playwright's image. A page constructs connections, each
+with one data channel, and keeps no reference to one it has closed:
+
+| | Chrome 156 | Firefox 157 | WebKit 26.5 (Playwright) |
+| --- | --- | --- | --- |
+| closed at once, in one loop | the 501st throws `UnknownError` | 1,500 made, none refused | 1,500 made, none refused |
+| closed at once, one every 10 ms | the 501st, after 5.2 s | 1,200 made, none refused (one every 5 ms) | not measured |
+| open 2 s each, one every 6 ms, 313 open at a time | the 501st, after 3.2 s | not measured | not measured |
+| open 20 s each, one every 400 ms, 50 open at a time, the page allocating as an app does | the 528th, after 211 s | not measured | not measured |
+| all kept open | the 501st | 1,500 made, none refused | 1,500 made, none refused |
+
+Chromium counts a connection against 500 per renderer process when it is constructed and gives the slot back when
+the object is destroyed (`rtc_peer_connection.cc` at 156.0.8078.47). `close()` frees nothing: the slot comes back at
+a full garbage collection, which an idle page may not run for minutes. So a page that makes many short connections,
+as a WebRTC swarm does with its offers, is refused with 50 open.
+
+What brings the slots back at the refusal, within the same task, on Chrome 156:
+
+| | a blank page | a page holding 376 MiB of objects |
+| --- | --- | --- |
+| 512 buffers of 1 MiB, dropped | the next construction works; in one loop the 1,001st is refused | refused, also after 4,096 buffers |
+| 64 buffers of 1 MiB, dropped every 200 constructions | 1,500 made 20 ms apart; the 501st refused in one loop, or 10 ms apart on an idle page | the 528th refused 20 ms apart; 800 made 400 ms apart |
+| buffers of 1 MiB kept until a construction works | 32 to 464 MiB | 352 MiB, then 1.1 to 2.5 GiB, more each round |
+| one `new ArrayBuffer(2 ** 35 - 1)` | every closed connection's slot back, in 6 to 34 ms | the same, in 386 to 437 ms |
+
+The first three lean on V8's allocation limits, which grow with the heap. The last does not: V8 takes a length up to
+32 GiB - 1, Chromium's allocator refuses one over 16 GiB - 2 MiB before it reserves anything, and V8 answers a
+refused backing store with full collections before it throws `RangeError` (read at V8 15.6.75). The time follows
+the heap: 60 ms with 51 MiB of objects, 150 ms with 126 MiB.
+
+**The native constructor runs first; on `UnknownError`, one `ArrayBuffer` of 32 GiB - 1 is asked for and, once that
+is refused, the native constructor runs once more.** An engine that grants the buffer has collected nothing, so the
+refusal is thrown as it came. No count, no timer and no engine check, so where nothing is refused (Firefox, WebKit)
+the native constructor is all that runs. The buffer's length is read and the answer used, because a bundler drops an
+allocation nobody reads: this package's own build did.
+
+**A page that really holds 500 connections still gets the platform's error**, thrown as it came: open ones, and
+closed ones it still references, keep their slots. Not measured: Safari, Chromium on Android, and a 32 bit Chromium,
+where V8's longest buffer is 2 ** 31 - 1 bytes, so nothing is collected and the refusal stands.
+
+Where the context has no `RTCPeerConnection` (a worker, node) a construction throws `NotSupportedError`.
+
 ## Adding to it
 
 If you hit something that behaves differently between engines, or differently from its own
