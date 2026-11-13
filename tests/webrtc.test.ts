@@ -9,13 +9,9 @@ import { engines } from './engines'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
-/**
- * The entry as it ships, built in memory by the package's own config. The browsers run this and not the source, and
- * so does one case without a browser, because the bundler is part of what is pinned: it dropped the buffer request
- * while nothing read the buffer.
- */
-const built = (async () => {
-  const outputs = await build({ root: join(import.meta.dirname, '..'), logLevel: 'silent', build: { write: false } })
+/** The entry, built in memory by the package's own config, as it ships or as a minifier leaves it. */
+const bundle = async (minify: boolean) => {
+  const outputs = await build({ root: join(import.meta.dirname, '..'), logLevel: 'silent', build: { write: false, minify } })
   const files = [outputs].flat().flatMap(output => 'output' in output ? output.output : [])
   const code = (fileName: string) => {
     const file = files.find(file => file.fileName === fileName)
@@ -23,7 +19,13 @@ const built = (async () => {
     return file.code
   }
   return { es: code('webrtc.js'), cjs: code('webrtc.cjs') }
-})()
+}
+
+/**
+ * The entry as it ships. The browsers run this and not the source, and so does one case without a browser, because
+ * the bundler is part of what is pinned: it dropped the buffer request while nothing read the buffer.
+ */
+const built = bundle(false)
 
 type Module = { RTCPeerConnection: typeof RTCPeerConnection }
 
@@ -90,6 +92,13 @@ describe('RTCPeerConnection over a platform class', () => {
     expect(calls).toEqual([[configuration], []])
     expect(calls[0]![0]).toBe(configuration)
   })
+
+  it('keeps the platform\'s name, defined as a class defines its own, where a minifier has renamed the class', async () => {
+    platform()
+    const exports = {} as Module
+    compileFunction((await bundle(true)).cjs, ['exports'])(exports)
+    expect(Object.getOwnPropertyDescriptor(exports.RTCPeerConnection, 'name')).toEqual({ value: 'RTCPeerConnection', writable: false, enumerable: false, configurable: true })
+  }, 60_000)
 
   it('adds nothing where nothing is refused: 1,200 constructions ask for no buffer', async () => {
     const { calls } = platform()

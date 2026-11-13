@@ -63,7 +63,10 @@ const allocates = (length: number): boolean => {
  *
  * Where the context has no `RTCPeerConnection` (a worker, node) a construction throws `NotSupportedError`.
  */
-export const RTCPeerConnection: NativeConstructor = class RTCPeerConnection extends ((Native ?? Object) as NativeConstructor) {
+export const RTCPeerConnection: NativeConstructor = class extends ((Native ?? Object) as NativeConstructor) {
+  // set, and not left to a declaration: a consumer's minifier renames the class, and `name` went with it
+  static { Object.defineProperty(this, 'name', { value: 'RTCPeerConnection' }) }
+
   constructor(...args: ConstructorParameters<NativeConstructor>) {
     if (!Native) throw new DOMException('this context has no RTCPeerConnection', 'NotSupportedError')
     try {
