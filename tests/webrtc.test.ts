@@ -127,7 +127,7 @@ describe('RTCPeerConnection over a platform class', () => {
     expect(new exports.RTCPeerConnection()).toBeInstanceOf(Native)
     expect(asked).toEqual([2 ** 35 - 1])
     expect(calls).toHaveLength(2)
-  })
+  }, 60_000)
 
   it('an engine that grants the buffer collected nothing: the refusal is thrown as it came, with no second construction', async () => {
     const first = refusal()

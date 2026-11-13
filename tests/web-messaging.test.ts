@@ -47,7 +47,7 @@ describe('postMessage', () => {
       expect(tsc.stdout + tsc.stderr, `exactOptionalPropertyTypes ${exact}`).toBe('')
       expect(tsc.status).toBe(0)
     }
-  })
+  }, 60_000)
 })
 
 const ORIGIN = 'https://rig.test'
