@@ -323,7 +323,8 @@ engine runs the same line.
 ### `RTCPeerConnection`
 
 The platform's class under its own name, from the root or from `@banou/ponyfill/webrtc`: a subclass whose
-constructor is not refused for connections the page has already closed and dropped.
+constructor is not refused for connections the page has already closed and dropped, as far as a garbage collection
+gives their slots back.
 
 ```ts
 import { RTCPeerConnection } from '@banou/ponyfill'
@@ -360,7 +361,7 @@ What brings the slots back at the refusal, within the same task, on Chrome 156:
 The first three lean on V8's allocation limits, which grow with the heap. The last does not: V8 takes a length up to
 32 GiB - 1, Chromium's allocator refuses one over 16 GiB - 2 MiB before it reserves anything, and V8 answers a
 refused backing store with full collections before it throws `RangeError` (read at V8 15.6.75). The time follows
-the heap: 60 ms with 51 MiB of objects, 150 ms with 126 MiB.
+the heap: 60 ms with 51 MiB of objects, 150 ms with 126 MiB, 1.3 to 2.1 s with 1.25 GiB.
 
 **The native constructor runs first; on `UnknownError`, one `ArrayBuffer` of 32 GiB - 1 is asked for and, once that
 is refused, the native constructor runs once more.** An engine that grants the buffer has collected nothing, so the
@@ -368,9 +369,47 @@ refusal is thrown as it came. No count, no timer and no engine check, so where n
 the native constructor is all that runs. The buffer's length is read and the answer used, because a bundler drops an
 allocation nobody reads: this package's own build did.
 
-**A page that really holds 500 connections still gets the platform's error**, thrown as it came: open ones, and
-closed ones it still references, keep their slots. Not measured: Safari, Chromium on Android, and a 32 bit Chromium,
-where V8's longest buffer is 2 ** 31 - 1 bytes, so nothing is collected and the refusal stands.
+**A handled refusal costs that pause, and two things more**, because V8 runs the collection as its last resort
+before an out-of-memory error. Measured on Chrome 156:
+
+- **With DevTools open, the page stops at each one.** With the debugger attached, every handled refusal pauses the
+  page in this constructor (reason `OOM`, the pause before a potential out-of-memory crash) until it is resumed: 3
+  pauses for the 3 refusals of 1,600 constructions in 4 of 4 runs, none with the platform's class, none with the
+  debugger off.
+- **A page above 95% of its JS heap limit can be ended.** There, collections run back to back count as ineffective,
+  and V8 ends the page at the fourth in a row. With the limit lowered to 512 MiB and 491 MiB of objects held, one
+  loop of connections closed at once ended the page at its third refusal in 7 of 7 runs, where the platform's class
+  throws at the 501st and the page lives. With a task between constructions no page ended in 6 runs, and with 471 MiB
+  held one loop made 2,600.
+
+**A page that really holds 500 connections still gets the platform's error**, thrown as it came. A connection holds
+its slot while it is open and while the page still references it, and in these cases as well, measured on Chrome 156:
+
+| a connection | keeps its slot |
+| --- | --- |
+| dropped without `close()` | through the collection: the 501st is refused, in one loop and 10 ms apart |
+| closed while its own `createOffer()` or `setLocalDescription()` is pending | until a task has run: in one loop the 501st is refused, with a task between constructions 1,500 were made |
+| closed in the one task between Chromium scheduling a state change event and dispatching it | while its frame lives, as read: the scheduled `icegatheringstatechange` or `connectionstatechange` holds the connection, `close()` leaves it scheduled, and its dispatch then returns before it (`rtc_peer_connection.cc` at 156.0.8078.47) |
+
+That last one, measured. A lone connection closed after its `setLocalDescription(offer)` resolved kept its slot 9.5 s
+later in 0 of 40 when closed in the same task, 40 and 36 of 40 one task later, 36 of 40 a `setTimeout` of 0 ms later,
+1 of 40 two tasks later, and none 3 tasks or 1 ms later, or closed inside its `icegatheringstatechange` handler.
+Made by a child frame's own class and closed one task later, 39 and 40 of 40 kept theirs, and 0 of 40 once that
+frame was removed. Between two ends in one page, an answerer closed in the task that ended its signalling, candidates still passing: 30
+and 36 of 40, and with both ends closed then, 10 and 33 of 80 connections after 5 minutes with a collection every
+20 s; closed 5 ms later, none.
+
+**At times the collection gives no slot back** although every connection was closed and dropped, and the next ones
+give none either. The cause was not found. The platform's class to its refusal, then 1,500 through this one closed at
+once in one loop: the retry was refused in 7 of 826 runs where the page had a subclass of its own in the platform
+class's place, and in 0 of 60 where it had none. Connections open 2 s each met it in 2 of 16 runs on a busy machine.
+In three such pages, two more buffer requests over 2 s freed nothing, and one collection asked for through the
+debugger protocol (`HeapProfiler.collectGarbage`) then freed all 500. With V8's heap limit lowered to 512 MiB and
+376 MiB of objects held it was 10 of 356 runs, one still refused 21 s and four requests later, and 0 of 31 with
+Chrome's own limit. So a page treats a refused construction as one to make again later.
+
+Not measured: Safari, Chromium on Android, and a 32 bit Chromium, where V8's longest buffer is 2 ** 31 - 1 bytes, so
+nothing is collected and the refusal stands.
 
 Where the context has no `RTCPeerConnection` (a worker, node) a construction throws `NotSupportedError`.
 
