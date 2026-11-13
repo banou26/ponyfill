@@ -35,14 +35,22 @@ const fresh = async () => {
 
 const refusal = () => new DOMException('Failed to construct \'RTCPeerConnection\': Cannot create so many PeerConnections', 'UnknownError')
 
-/** A platform class whose constructor throws whatever `answer` returns for that call, counted from 1. */
+const MOST = 1300
+
+/**
+ * A platform class whose constructor throws whatever `answer` returns for that call, counted from 1, up to `MOST`
+ * calls. The call after those throws an error of its own and every later one constructs, so a retry that never ends
+ * leaves its loop and fails its case. Nothing else ends one: the loop never yields to the case's timeout, and each
+ * call is recorded here.
+ */
 const platform = (answer: (call: number) => unknown = () => undefined) => {
   const calls: unknown[][] = []
   class Native {
     static generateCertificate = () => 'a certificate'
     constructor(...args: unknown[]) {
       calls.push(args)
-      const error = answer(calls.length)
+      if (calls.length === MOST + 1) throw new Error(`the platform class was constructed more than ${MOST} times`)
+      const error = calls.length <= MOST && answer(calls.length)
       if (error) throw error
     }
   }
@@ -188,8 +196,13 @@ for (const [engine, launch] of engines) {
 
     // A page of its own for each case: Chromium counts its slots per renderer process, so a shared page would start
     // a case with whatever the one before left uncollected. The module is imported by a string, which vitest leaves
-    // alone, and reaches the callbacks as a handle, so the rig adds no global either.
-    const withPage = async <T>(run: (page: Awaited<ReturnType<Browser['newPage']>>, module: () => Promise<JSHandle<Module>>) => Promise<T>) => {
+    // alone, and reaches the callbacks as a handle, not as a global.
+    //
+    // With `most`, the page first puts a subclass in the platform class's place that counts its constructions, as
+    // `platform` does above: the one after `most` throws, and every later one returns an object that is no connection.
+    // A refusal retried without end spins inside the page, and this ends it in a second where the case's timeout
+    // takes 60.
+    const withPage = async <T>(run: (page: Awaited<ReturnType<Browser['newPage']>>, module: () => Promise<JSHandle<Module>>) => Promise<T>, most?: number) => {
       const page = await browser.newPage()
       try {
         await page.route('**/*', route => {
@@ -199,6 +212,16 @@ for (const [engine, launch] of engines) {
           return route.fulfill({ contentType: 'text/html', body: '<!doctype html>' })
         })
         await page.goto(`${ORIGIN}/`)
+        if (most) await page.evaluate(most => {
+          let constructed = 0
+          globalThis.RTCPeerConnection = class extends RTCPeerConnection {
+            constructor(...args: ConstructorParameters<typeof RTCPeerConnection>) {
+              if (++constructed === most + 1) throw new Error(`the platform class was constructed more than ${most} times`)
+              if (constructed > most) return Object.create(new.target.prototype) as RTCPeerConnection
+              super(...args)
+            }
+          }
+        }, most)
         return await run(page, () => page.evaluateHandle('import(\'/webrtc.js\')') as Promise<JSHandle<Module>>)
       } finally {
         await page.close()
@@ -251,7 +274,7 @@ for (const [engine, launch] of engines) {
               connection.close()
             }
           } catch (error) {
-            return { made, refused: (error as DOMException).name }
+            return { made, refused: String(error) }
           }
           return { made }
         }
@@ -269,8 +292,8 @@ for (const [engine, launch] of engines) {
         } finally {
           globalThis.ArrayBuffer = NativeBuffer
         }
-      }, await module()))
-      expect(seen.platform).toEqual(capped ? { made: CAP, refused: 'UnknownError' } : { made: 1500 })
+      }, await module()), 3100)
+      expect(seen.platform).toEqual(capped ? { made: CAP, refused: expect.stringMatching(/^UnknownError: /) } : { made: 1500 })
       expect(seen.ponyfill).toEqual({ made: 1500 })
       expect(new Set(seen.asked)).toEqual(new Set(capped ? [2 ** 35 - 1] : []))
       // one for each refusal: a collection gave back 499 slots of 500 when measured, so 4 refusals in 1,500, or 3 if all come back
@@ -300,10 +323,10 @@ for (const [engine, launch] of engines) {
             await new Promise(resolve => setTimeout(resolve, 6))
           }
         } catch (error) {
-          return { made, peak, refused: (error as DOMException).name }
+          return { made, peak, refused: String(error) }
         }
         return { made, peak }
-      }, await module()))
+      }, await module()), 800)
       expect(seen).toEqual({ made: 750, peak: expect.any(Number) })
       expect(seen.peak).toBeGreaterThan(100)
       expect(seen.peak).toBeLessThan(CAP)
@@ -325,7 +348,7 @@ for (const [engine, launch] of engines) {
         for (const connection of held) connection.close()
         held.length = 0
         return { platform, ponyfill, dropped: attempt(Ponyfill) }
-      }, await module()))
+      }, await module()), 600)
       expect(seen.platform).toMatch(/^true UnknownError: /)
       expect(seen.ponyfill).toBe(seen.platform)
       expect(seen.dropped).toBe('made')
