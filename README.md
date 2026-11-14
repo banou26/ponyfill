@@ -174,6 +174,33 @@ three seconds before stopping the torrent anyway.
 there is one, as Chrome's is. Bytes a partial write put down stay written and charged, and the
 specification's other short count is reported the same way, since either way the write did not land.
 
+### `createSyncAccessHandle`
+
+`FileSystemFileHandle.createSyncAccessHandle()`, taking the file handle as its first argument, from
+`@banou/ponyfill/file-system` only, with a promise that settles on every engine.
+
+```ts
+import { createSyncAccessHandle } from '@banou/ponyfill/file-system'
+
+const access = await createSyncAccessHandle(await dir.getFileHandle(name, { create: true }))
+```
+
+Measured 2026-11-14, a dedicated worker asking for sync access handles in OPFS, a collection forced
+between the ask and its answer:
+
+| | Chrome 156.0.8078.47, new headless mode | chrome-headless-shell 156 |
+| --- | --- | --- |
+| the file handle referenced by nothing but the call | 182 of 200 asks never settled | 0 of 50 |
+| the file handle held in a variable | 0 of 100 | not measured |
+| the ask followed by `.finally(() => file)` | 0 of 100 | not measured |
+
+Chromium holds the file handle weakly while it checks storage access, so a handle collected in that
+window takes the answer with it: the promise neither resolves nor rejects, and no lock is taken. A
+minifier makes this easy to reach, since `const file = await dir.getFileHandle(name)` followed by
+`await file.createSyncAccessHandle()` ships as one expression with the handle as a temporary, which
+V8 does not keep alive across the `await`. Here the promise's own reaction holds the handle until the
+ask settles. Firefox and WebKit were not measured.
+
 ### `createWritable`
 
 `WebTransportDatagramDuplexStream.createWritable()`, taking the duplex as its first argument, from
