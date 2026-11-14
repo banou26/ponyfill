@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { showDirectoryPicker, showOpenFilePicker, showSaveFilePicker, write } from '../src/file-system'
+import { setFlagsFromString } from 'node:v8'
+import { runInNewContext } from 'node:vm'
+
+import { createSyncAccessHandle, showDirectoryPicker, showOpenFilePicker, showSaveFilePicker, write } from '../src/file-system'
 
 /**
  * The pickers, driven without a browser.
@@ -385,5 +388,56 @@ describe('write', () => {
     const refused = new DOMException('over quota', 'QuotaExceededError')
     const h = { write: () => { throw refused } }
     expect(() => write(h, new Uint8Array(1))).toThrow(refused)
+  })
+})
+
+describe('createSyncAccessHandle', () => {
+  setFlagsFromString('--expose_gc')
+  const collect = runInNewContext('gc') as () => void
+
+  /**
+   * A file handle as Chromium 156 answers it: the ask is answered in a later task, after a
+   * collection, and only if the handle object itself is still alive then. A handle that went takes
+   * the answer with it, and the promise never settles.
+   */
+  const fileHandle = (answer: { access?: object, error?: Error } = { access: {} }) => {
+    const asked: unknown[] = []
+    return {
+      asked,
+      createSyncAccessHandle (options?: unknown) {
+        asked.push(options)
+        const held = new WeakRef(this)
+        return new Promise<object>((resolve, reject) => {
+          setTimeout(() => {
+            collect()
+            if (!held.deref()) return
+            if (answer.error) reject(answer.error)
+            else resolve(answer.access!)
+          }, 0)
+        })
+      },
+    }
+  }
+
+  const SILENT = Symbol('never settled')
+  const within = <T>(ask: Promise<T>) =>
+    Promise.race([ask, new Promise<typeof SILENT>((resolve) => { setTimeout(() => resolve(SILENT), 500) })])
+
+  it('answers for a file handle nothing else holds', async () => {
+    const access = {}
+    const answers = await Promise.all(Array.from({ length: 5 }, () => within(createSyncAccessHandle(fileHandle({ access })))))
+    expect(answers).toEqual([access, access, access, access, access])
+  })
+
+  it('the control: the same handle asked directly is never answered', async () => {
+    const answers = await Promise.all(Array.from({ length: 5 }, () => within(fileHandle().createSyncAccessHandle())))
+    expect(answers).toEqual([SILENT, SILENT, SILENT, SILENT, SILENT])
+  })
+
+  it('hands the options on, and the platform\'s refusal back untouched', async () => {
+    const locked = new DOMException('another handle is open', 'NoModificationAllowedError')
+    const file = fileHandle({ error: locked })
+    await expect(createSyncAccessHandle(file, { mode: 'read-only' })).rejects.toBe(locked)
+    expect(file.asked).toEqual([{ mode: 'read-only' }])
   })
 })
