@@ -440,3 +440,51 @@ export const write = (handle: SyncAccessHandle, buffer: AllowSharedBufferSource,
   }
   return written
 }
+
+type SyncAccessOptions = { mode?: 'readwrite' | 'read-only' | 'readwrite-unsafe' }
+
+/** The one member called, so a `FileSystemFileHandle` and a test's stand-in both fit. */
+type SyncAccessSource<Handle> = { createSyncAccessHandle(options?: SyncAccessOptions): Promise<Handle> }
+
+/**
+ * Same as `file.createSyncAccessHandle(options)` on a `FileSystemFileHandle`, with the file handle as
+ * the first argument, and a promise that settles on every engine. From `@banou/ponyfill/file-system`
+ * only.
+ *
+ *     import { createSyncAccessHandle } from '@banou/ponyfill/file-system'
+ *     const access = await createSyncAccessHandle(await dir.getFileHandle(name, { create: true }))
+ *
+ * ## What was measured, on what, and when
+ *
+ * 2026-11-14, one machine, a dedicated worker asking for sync access handles in OPFS, a collection
+ * forced between the ask and its answer:
+ *
+ * | | Chrome 156.0.8078.47, new headless mode | chrome-headless-shell 156 |
+ * | --- | --- | --- |
+ * | the file handle referenced by nothing but the call | 182 of 200 asks never settled | 0 of 50 |
+ * | the file handle held in a variable | 0 of 100 | not measured |
+ * | the ask followed by `.finally(() => file)` | 0 of 100 | not measured |
+ *
+ * An ask that never settles neither resolves nor rejects, takes no lock (a second ask on the same
+ * file answered in 1 to 2 ms), and reports nothing. In a torrent client writing through such handles,
+ * 8 of 49 downloads on a local swarm stopped one piece short for good, and 0 of 43 with the reference
+ * kept.
+ *
+ * Chromium binds the file handle WEAKLY into the storage access check that runs first
+ * (`file_system_file_handle.cc`, `WrapWeakPersistent(this)`), and strongly only into the stage after
+ * it. A handle collected while that check is under way takes the answer with it. The headless shell
+ * answers the check synchronously in a worker, so it has no such window. Firefox and WebKit were not
+ * measured.
+ *
+ * What makes it easy to hit: V8 keeps a named `const` alive across an `await` and drops a temporary,
+ * and a minifier turns the first into the second. `const file = await dir.getFileHandle(name)` then
+ * `await file.createSyncAccessHandle()` ships as
+ * `await (await dir.getFileHandle(name)).createSyncAccessHandle()`.
+ *
+ * ## The pick
+ *
+ * The promise's own reaction holds the file handle until the ask settles. Nothing else changes: the
+ * handle answered, the errors thrown and the lock taken are the platform's.
+ */
+export const createSyncAccessHandle = <Handle>(file: SyncAccessSource<Handle>, options?: SyncAccessOptions): Promise<Handle> =>
+  file.createSyncAccessHandle(options).finally(() => file)
