@@ -24,6 +24,9 @@ on:
   # cannot repeat
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: publish
   cancel-in-progress: false
@@ -36,16 +39,18 @@ jobs:
       # the OIDC token npm exchanges for short lived publish credentials. Without it the job cannot
       # authenticate at all, because there is deliberately no token secret anywhere.
       id-token: write
-      # only to push the release tag
+      # only to create the release tag
       contents: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       # NO `registry-url` on purpose. That input writes an .npmrc pinning auth to ${NODE_AUTH_TOKEN},
       # which is empty under trusted publishing, and turns a working OIDC exchange into an ENEEDAUTH
       # that reads like a revoked credential. registry.npmjs.org is the default, so nothing is lost.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: '24'
           # setup-node@v5 caches the package manager BY DEFAULT through this separate input, and the
@@ -55,12 +60,12 @@ jobs:
           # 33210547914.
           package-manager-cache: false
 
-      # Trusted publishing needs npm 11.5.1 or newer. Pinned rather than assumed: the day the runner
-      # image moves to an older npm, the publish step fails with an auth error that looks like a
-      # revoked credential rather than a stale CLI.
+      # Trusted publishing needs npm 11.5.1 or newer, and a stale CLI fails the publish step with an
+      # auth error that looks like a revoked credential. Exact, so a new npm only arrives by a bump
+      # here: 12.2.2 is what run 43575340995 (2026-11-14) published 0.0.15 with.
       - name: Use an npm that supports trusted publishing
         run: |
-          npm install -g npm@latest
+          npm install -g npm@12.2.2
           echo "npm $(npm --version)"
 
       # Decided BEFORE anything is built, so an unchanged version costs seconds.
@@ -139,18 +144,21 @@ jobs:
       # what a consumer actually receives.
       - name: Verify the tarball before it leaves the runner
         if: steps.decide.outputs.changed == 'true'
+        env:
+          TGZ: ${{ steps.pack.outputs.tgz }}
+          PKG: ${{ steps.decide.outputs.name }}
+          WANT: ${{ steps.decide.outputs.local }}
         run: |
-          TGZ="${{ steps.pack.outputs.tgz }}"
           MANIFEST=$(tar xzOf "$TGZ" package/package.json)
           NAME=$(printf '%s' "$MANIFEST" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).name")
           VERSION=$(printf '%s' "$MANIFEST" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
           echo "artifact: $NAME@$VERSION"
 
-          if [ "$NAME" != "${{ steps.decide.outputs.name }}" ]; then
-            echo "::error::packed name is $NAME, expected ${{ steps.decide.outputs.name }}"; exit 1
+          if [ "$NAME" != "$PKG" ]; then
+            echo "::error::packed name is $NAME, expected $PKG"; exit 1
           fi
-          if [ "$VERSION" != "${{ steps.decide.outputs.local }}" ]; then
-            echo "::error::packed version $VERSION does not match ${{ steps.decide.outputs.local }}"; exit 1
+          if [ "$VERSION" != "$WANT" ]; then
+            echo "::error::packed version $VERSION does not match $WANT"; exit 1
           fi
 
           # THE FAILURE THIS EXISTS FOR: build/ is gitignored, so a pack whose prepack hook did not run
@@ -205,11 +213,14 @@ jobs:
       # choice of ours, so that list cannot drift without the platform drifting.
       - name: Install the tarball somewhere else and import it
         if: steps.decide.outputs.changed == 'true'
+        env:
+          TGZ: ${{ steps.pack.outputs.tgz }}
+          PKG: ${{ steps.decide.outputs.name }}
         run: |
           CONSUMER="$RUNNER_TEMP/consumer"
           mkdir -p "$CONSUMER" && cd "$CONSUMER"
           printf '{"name":"c","type":"module","private":true}\n' > package.json
-          npm install "${{ steps.pack.outputs.tgz }}" --no-audit --no-fund
+          npm install "$TGZ" --no-audit --no-fund
 
           # what the SOURCE says it exports, so the comparison below cannot go stale
           EXPECTED=$(cd "$GITHUB_WORKSPACE" && node -e "
@@ -223,7 +234,7 @@ jobs:
           echo "src/index.ts exports: $EXPECTED"
 
           EXPECTED="$EXPECTED" node --input-type=module -e "
-            import * as pkg from '${{ steps.decide.outputs.name }}'
+            const pkg = await import(process.env.PKG)
 
             const got = Object.keys(pkg).sort().join(',')
             if (got !== process.env.EXPECTED) {
@@ -268,7 +279,9 @@ jobs:
       # Provenance is attested automatically under trusted publishing, so --provenance is not passed.
       - name: Publish
         if: steps.decide.outputs.changed == 'true'
-        run: npm publish "${{ steps.pack.outputs.tgz }}" --access public
+        env:
+          TGZ: ${{ steps.pack.outputs.tgz }}
+        run: npm publish "$TGZ" --access public
 
       # Ask the REGISTRY. Everything above is a claim about what was uploaded; only this observes what
       # a consumer would actually get.
@@ -299,11 +312,10 @@ jobs:
           exit 1
 
       # Tag only after the registry confirms, so a tag can never name a release that is not there.
+      # Through the API, so the checkout keeps no write token on disk while npm ci runs install scripts.
       - name: Tag the release
         if: steps.decide.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="v${{ steps.decide.outputs.local }}"
-          git tag "$TAG" "${{ github.sha }}"
-          git push origin "$TAG"
+          VERSION: ${{ steps.decide.outputs.local }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$GITHUB_SHA"
