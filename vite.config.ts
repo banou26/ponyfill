@@ -47,7 +47,7 @@ export default defineConfig((env) => ({
     minify: false,
     sourcemap: false,
     lib: {
-      entry: { index: 'src/index.ts', storage: 'src/storage.ts', permissions: 'src/permissions.ts', 'file-system': 'src/file-system.ts', webtransport: 'src/webtransport.ts', 'web-audio': 'src/web-audio.ts', 'web-messaging': 'src/web-messaging.ts', webrtc: 'src/webrtc.ts' },
+      entry: { index: 'src/index.ts', storage: 'src/storage.ts', permissions: 'src/permissions.ts', 'file-system': 'src/file-system.ts', webtransport: 'src/webtransport.ts', 'web-audio': 'src/web-audio.ts', 'web-messaging': 'src/web-messaging.ts', webrtc: 'src/webrtc.ts', 'media-source': 'src/media-source.ts' },
       formats: ['es', 'cjs'],
     },
     rollupOptions: {

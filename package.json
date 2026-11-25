@@ -45,6 +45,11 @@
       "types": "./build/webrtc.d.ts",
       "import": "./build/webrtc.js",
       "require": "./build/webrtc.cjs"
+    },
+    "./media-source": {
+      "types": "./build/media-source.d.ts",
+      "import": "./build/media-source.js",
+      "require": "./build/media-source.cjs"
     }
   },
   "scripts": {
@@ -89,7 +94,8 @@
     "compatibility",
     "webtransport",
     "postmessage",
-    "webrtc"
+    "webrtc",
+    "media-source"
   ],
   "sideEffects": false
 }

@@ -51,6 +51,7 @@ export { storage } from './storage'
 export { permissions } from './permissions'
 export { showDirectoryPicker, showOpenFilePicker, showSaveFilePicker } from './file-system'
 export { RTCPeerConnection } from './webrtc'
+export { MediaSource } from './media-source'
 
 export type { StorageEstimate } from './storage'
 export type { PermissionStatus } from './permissions'

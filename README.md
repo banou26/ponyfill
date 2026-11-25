@@ -440,6 +440,41 @@ nothing is collected and the refusal stands.
 
 Where the context has no `RTCPeerConnection` (a worker, node) a construction throws `NotSupportedError`.
 
+### `MediaSource`
+
+The platform's class under its own name, from the root or from `@banou/ponyfill/media-source`, falling
+back to `ManagedMediaSource` where `MediaSource` is absent (iPhone WebKit since iOS 17.1).
+
+```ts
+import { MediaSource } from '@banou/ponyfill'
+
+if (MediaSource.isTypeSupported(mime)) {
+  const source = new MediaSource()
+}
+```
+
+Measured 2026-11-25 across Chrome 156, Firefox 157, and WebKit 26.5 in Playwright's container
+(`https://rig.test/` origin):
+
+| | Chrome 156 | Firefox 157 | WebKit 26.5 (Playwright) |
+| --- | --- | --- | --- |
+| `MediaSource` | present | present | present |
+| `ManagedMediaSource` | absent | absent | present |
+| `MediaSource.canConstructInDedicatedWorker` | `true` | absent | absent |
+| `URL.createObjectURL(source)` opens `sourceopen` | yes | yes | yes (HTTPS origin) |
+
+Documented by WebKit and not measured on real hardware here: iPhone iOS Safari 17.1+ omits
+`MediaSource` and exposes only `ManagedMediaSource`. Attaching a `ManagedMediaSource` on iOS Safari
+also requires `video.disableRemotePlayback = true` (or a secondary AirPlay `<source>`) before
+assigning the source, or `sourceopen` does not fire; `'streaming' in source` tells a media element
+caller when a `ManagedMediaSource` was constructed.
+
+Reads `globalThis.MediaSource ?? globalThis.ManagedMediaSource` dynamically on each call so test
+stubs and runtime codec filters still apply. Where neither global exists, `isTypeSupported()` returns
+`false` and `new MediaSource()` throws `NotSupportedError`. Because resolution is dynamic,
+`MediaSource.prototype` is not the native prototype and subclassing `MediaSource` does not attach
+subclass methods.
+
 ## Adding to it
 
 If you hit something that behaves differently between engines, or differently from its own
