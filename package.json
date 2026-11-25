@@ -50,6 +50,11 @@
       "types": "./build/media-source.d.ts",
       "import": "./build/media-source.js",
       "require": "./build/media-source.cjs"
+    },
+    "./fullscreen": {
+      "types": "./build/fullscreen.d.ts",
+      "import": "./build/fullscreen.js",
+      "require": "./build/fullscreen.cjs"
     }
   },
   "scripts": {
@@ -95,7 +100,8 @@
     "webtransport",
     "postmessage",
     "webrtc",
-    "media-source"
+    "media-source",
+    "fullscreen"
   ],
   "sideEffects": false
 }
