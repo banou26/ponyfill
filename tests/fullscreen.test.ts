@@ -195,6 +195,22 @@ describe('requestFullscreen and exitFullscreen', () => {
     await exitFullscreen(doc)
     expect(calls).toEqual(['doc'])
   })
+
+  it('prefers doc.exitFullscreen over webkitSetPresentationMode when fullscreenElement is set on a video', async () => {
+    const calls: string[] = []
+    const video = {
+      webkitPresentationMode: 'fullscreen',
+      webkitSetPresentationMode: (mode: string) => { calls.push(`pres:${mode}`) },
+    } as unknown as HTMLVideoElement
+    const doc = makeDoc({
+      fullscreenElement: video,
+      querySelectorAll: () => [video] as unknown as NodeListOf<Element>,
+      exitFullscreen: () => { calls.push('doc'); return Promise.resolve() },
+    })
+
+    await exitFullscreen(doc)
+    expect(calls).toEqual(['doc'])
+  })
 })
 
 const built = build({

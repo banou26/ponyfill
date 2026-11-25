@@ -128,6 +128,7 @@ export const requestFullscreen = (element: Element, options?: FullscreenOptions)
     if (typeof el.requestFullscreen === 'function') {
       try {
         const result = options === undefined ? el.requestFullscreen() : el.requestFullscreen(options)
+        // Asynchronous fallback runs in a microtask, whereas the disabled-fullscreen iPhone path runs synchronously above.
         return Promise.resolve(result).catch((error) => tryVideoFallback(element, doc) ?? Promise.reject(error))
       } catch (error) {
         return tryVideoFallback(element, doc) ?? Promise.reject(error)
@@ -149,13 +150,32 @@ export const requestFullscreen = (element: Element, options?: FullscreenOptions)
   )
 }
 
+const rejectError = (error: unknown) => Promise.reject(error instanceof Error ? error : new Error(String(error)))
+
 /**
- * Exits active fullscreen on `doc`, handling WebKit's `<video>` presentation/fullscreen state when
- * `document.fullscreenElement` is null so `document.exitFullscreen()` is not called on an inactive
- * document.
+ * Exits active fullscreen on `doc`, exiting active element fullscreen via the document first and
+ * handling WebKit's `<video>` presentation/fullscreen state when `document.fullscreenElement` is null
+ * so `document.exitFullscreen()` is not called on an inactive document.
  */
 export const exitFullscreen = (doc: Document): Promise<void> => {
   const webkitDoc = doc as WebKitDocument
+
+  if (webkitDoc.fullscreenElement && typeof webkitDoc.exitFullscreen === 'function') {
+    try {
+      return Promise.resolve(webkitDoc.exitFullscreen())
+    } catch (error) {
+      return rejectError(error)
+    }
+  }
+
+  if (webkitDoc.webkitFullscreenElement && typeof webkitDoc.webkitExitFullscreen === 'function') {
+    try {
+      return Promise.resolve(webkitDoc.webkitExitFullscreen())
+    } catch (error) {
+      return rejectError(error)
+    }
+  }
+
   const video = findWebKitFullscreenVideo(doc)
 
   if (video && video.webkitPresentationMode === 'fullscreen' && typeof video.webkitSetPresentationMode === 'function') {
@@ -169,26 +189,10 @@ export const exitFullscreen = (doc: Document): Promise<void> => {
           exitVideo.call(video)
           return Promise.resolve()
         } catch (fallbackError) {
-          return Promise.reject(fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError)))
+          return rejectError(fallbackError)
         }
       }
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
-    }
-  }
-
-  if (webkitDoc.fullscreenElement && typeof webkitDoc.exitFullscreen === 'function') {
-    try {
-      return Promise.resolve(webkitDoc.exitFullscreen())
-    } catch (error) {
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
-    }
-  }
-
-  if (webkitDoc.webkitFullscreenElement && typeof webkitDoc.webkitExitFullscreen === 'function') {
-    try {
-      return Promise.resolve(webkitDoc.webkitExitFullscreen())
-    } catch (error) {
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+      return rejectError(error)
     }
   }
 
@@ -199,7 +203,7 @@ export const exitFullscreen = (doc: Document): Promise<void> => {
         exitVideo.call(video)
         return Promise.resolve()
       } catch (error) {
-        return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+        return rejectError(error)
       }
     }
   }
@@ -208,7 +212,7 @@ export const exitFullscreen = (doc: Document): Promise<void> => {
     try {
       return Promise.resolve(webkitDoc.exitFullscreen())
     } catch (error) {
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+      return rejectError(error)
     }
   }
 
@@ -216,7 +220,7 @@ export const exitFullscreen = (doc: Document): Promise<void> => {
     try {
       return Promise.resolve(webkitDoc.webkitExitFullscreen())
     } catch (error) {
-      return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+      return rejectError(error)
     }
   }
 
