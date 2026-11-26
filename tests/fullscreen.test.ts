@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { build } from 'vite-plus'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vite-plus/test'
 
-import { exitFullscreen, requestFullscreen } from '../src/fullscreen'
+import { exitFullscreen, fullscreenElement, fullscreenEnabled, requestFullscreen } from '../src/fullscreen'
 import { engines } from './engines'
 
 afterEach(() => { vi.unstubAllGlobals() })
@@ -210,6 +210,71 @@ describe('requestFullscreen and exitFullscreen', () => {
 
     await exitFullscreen(doc)
     expect(calls).toEqual(['doc'])
+  })
+
+  it('reports fullscreenEnabled accurately for restricted iframes and WebKit video elements', () => {
+    const disabledDoc = makeDoc({ fullscreenEnabled: false, webkitFullscreenEnabled: false })
+    const restrictedVideo = {
+      requestFullscreen: () => Promise.resolve(),
+    } as unknown as HTMLVideoElement
+    expect(fullscreenEnabled(disabledDoc, restrictedVideo)).toBe(false)
+    expect(fullscreenEnabled(disabledDoc, null)).toBe(false)
+    expect(fullscreenEnabled(disabledDoc, {} as unknown as Element)).toBe(false)
+
+    const preMetadataWebKitVideo = {
+      readyState: 0,
+      webkitSupportsFullscreen: false,
+      webkitEnterFullscreen: () => {},
+    } as unknown as HTMLVideoElement
+    expect(fullscreenEnabled(disabledDoc, preMetadataWebKitVideo)).toBe(true)
+
+    const unsupportedLoadedVideo = {
+      readyState: 1,
+      webkitSupportsFullscreen: false,
+      webkitEnterFullscreen: () => {},
+    } as unknown as HTMLVideoElement
+    expect(fullscreenEnabled(disabledDoc, unsupportedLoadedVideo)).toBe(false)
+
+    const presentationVideo = {
+      webkitPresentationMode: 'inline',
+      webkitSupportsPresentationMode: (m: string) => m === 'fullscreen',
+      webkitSetPresentationMode: () => {},
+    } as unknown as HTMLVideoElement
+    expect(fullscreenEnabled(disabledDoc, presentationVideo)).toBe(true)
+
+    const presentationUnsupportedVideo = {
+      webkitPresentationMode: 'inline',
+      webkitSupportsPresentationMode: () => false,
+      webkitSetPresentationMode: () => {},
+    } as unknown as HTMLVideoElement
+    expect(fullscreenEnabled(disabledDoc, presentationUnsupportedVideo)).toBe(false)
+
+    const enabledDoc = makeDoc({ fullscreenEnabled: true })
+    expect(fullscreenEnabled(enabledDoc, null)).toBe(true)
+  })
+
+  it('finds and exits an untracked shadow-DOM fallbackElement in fullscreenElement and exitFullscreen', async () => {
+    const container = {} as Element
+    const shadowVideo = {
+      webkitDisplayingFullscreen: true,
+      webkitExitFullscreen: vi.fn(),
+    } as unknown as HTMLVideoElement
+    const activeDoc = makeDoc({ fullscreenElement: container })
+    expect(fullscreenElement(activeDoc, shadowVideo)).toBe(container)
+
+    const disabledDoc = makeDoc({ fullscreenEnabled: false })
+    expect(fullscreenElement(disabledDoc, shadowVideo)).toBe(shadowVideo)
+    await exitFullscreen(disabledDoc, shadowVideo)
+    expect((shadowVideo as unknown as { webkitExitFullscreen: ReturnType<typeof vi.fn> }).webkitExitFullscreen).toHaveBeenCalledTimes(1)
+
+    const throwingVideo = {
+      webkitPresentationMode: 'fullscreen',
+      webkitDisplayingFullscreen: true,
+      webkitSetPresentationMode: () => { throw new Error('presentation exit failed') },
+      webkitExitFullscreen: vi.fn(),
+    } as unknown as HTMLVideoElement
+    await exitFullscreen(disabledDoc, throwingVideo)
+    expect((throwingVideo as unknown as { webkitExitFullscreen: ReturnType<typeof vi.fn> }).webkitExitFullscreen).toHaveBeenCalledTimes(1)
   })
 })
 

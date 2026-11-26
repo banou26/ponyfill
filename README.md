@@ -475,17 +475,25 @@ stubs and runtime codec filters still apply. Where neither global exists, `isTyp
 `MediaSource.prototype` is not the native prototype and subclassing `MediaSource` does not attach
 subclass methods.
 
-### `requestFullscreen`, `exitFullscreen`
+### `requestFullscreen`, `exitFullscreen`, `fullscreenEnabled`, `fullscreenElement`
 
-`Element.requestFullscreen()` and `Document.exitFullscreen()`, taking the target element or document
-first, from `@banou/ponyfill/fullscreen` only, falling back to WebKit's `<video>` presentation and
-fullscreen APIs where `document.fullscreenEnabled` is `false` (iPhone iOS Safari).
+`Element.requestFullscreen()`, `Document.exitFullscreen()`, and state helpers, taking the target
+document or element first, from `@banou/ponyfill/fullscreen` only, falling back to WebKit's `<video>`
+presentation and fullscreen APIs where `document.fullscreenEnabled` is `false` (iPhone iOS Safari).
 
 ```ts
-import { exitFullscreen, requestFullscreen } from '@banou/ponyfill/fullscreen'
+import {
+  exitFullscreen,
+  fullscreenElement,
+  fullscreenEnabled,
+  requestFullscreen,
+} from '@banou/ponyfill/fullscreen'
 
-await requestFullscreen(element)
-await exitFullscreen(document)
+if (fullscreenEnabled(document, element)) {
+  await requestFullscreen(element)
+}
+const current = fullscreenElement(document, element)
+await exitFullscreen(document, element)
 ```
 
 Measured 2026-11-26, headless, across Chrome 156, Firefox 157, and WebKit 26.5 in Playwright's
@@ -508,9 +516,12 @@ and omits element fullscreen while allowing `<video>` native fullscreen via
 When `document.fullscreenEnabled || document.webkitFullscreenEnabled` is true, `requestFullscreen`
 calls `element.requestFullscreen` (or `webkitRequestFullscreen`) synchronously and falls back to the
 video APIs if that rejects or throws on a `<video>`; non-video elements without document fullscreen
-reject with `NotSupportedError`. `exitFullscreen` exits WebKit video presentation or displaying
-fullscreen before calling `document.exitFullscreen()`, which would otherwise reject when
-`document.fullscreenElement` is `null`.
+reject with `NotSupportedError`. `fullscreenEnabled(doc, element?)` checks document fullscreen support
+or whether `element` itself supports WebKit video fullscreen without probing an offscreen `<video>`.
+`fullscreenElement(doc, fallbackElement?)` and `exitFullscreen(doc, fallbackElement?)` resolve and exit
+active element fullscreen first, then WebKit video presentation or displaying fullscreen (including
+an untracked `fallbackElement` inside a shadow root) before calling `doc.exitFullscreen()`, which would
+otherwise reject when `document.fullscreenElement` is `null`.
 
 ## Adding to it
 
