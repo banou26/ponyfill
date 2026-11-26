@@ -159,8 +159,8 @@ const tryElementRequest = (
 
 /**
  * Reports whether fullscreen is usable on `doc`, falling back to WebKit `<video>` fullscreen only
- * when `element` itself supports it (never probing an offscreen `<video>` on non-video targets or
- * inside restricted iframes where `doc.fullscreenEnabled` is `false`).
+ * when `element` itself supports it (never probing an offscreen `<video>` and returning `false` for
+ * elements without WebKit `<video>` fullscreen APIs when `doc.fullscreenEnabled` is `false`).
  */
 export const fullscreenEnabled = (doc: Document, element?: Element | null): boolean => {
   const webkitDoc = doc as WebKitDocument
